@@ -19,33 +19,39 @@
 
 using namespace std;
 
-static default_random_engine gen;
 void ParticleFilter::init(double x, double y, double theta, double std[]) {
 	// TODO: Set the number of particles. Initialize all particles to first position (based on estimates of 
 	//   x, y, theta and their uncertainties from GPS) and all weights to 1. 
 	// Add random Gaussian noise to each particle.
 	// NOTE: Consult particle_filter.h for more information about this method (and others in this file).
-	num_particles = 110;
+	int num_particles = 101;
 
 	// This line creates a normal (Gaussian) distribution for x
-	normal_distribution<double> dist_x(x, std[0]);
-	normal_distribution<double> dist_y(y, std[1]);
-	normal_distribution<double> dist_theta(theta, std[2]);
+	normal_distribution<double> dist_x(0, std[0]);
 	
-	//default_random_engine gen;
+	// TODO: Create normal distributions for y and theta
+	normal_distribution<double> dist_y(0, std[1]);
+	normal_distribution<double> dist_theta(0, std[2]);
+	
+	default_random_engine gen;
 
 	for (int i = 0; i < num_particles; i++){
-		Particle p; 
-		p.id = i; 
-		p.x = dist_x(gen); 
-	 	p.y = dist_y(gen);
-	 	p.theta = dist_theta(gen);
-	 	p.weight = 1.0;
+	 Particle p; 
+	 p.id = i; 
+	 p.x = x; 
+	 p.y = y;
+	 p.theta = theta;
+	 p.weight = 1.0;
 
-	 	particles.push_back(p);
+	 p.x += dist_x(gen);
+	 p.y += dist_y(gen);
+	 p.theta += dist_theta(gen);
+
+	 // adding normal distrbution noise
+	 particles.push_back(p);
 	}
 	
-	is_initialized = true; //since it is present as a boolean in the header file 
+	is_initialized = true; //since it is present as a boolean in the header file  
 }
 
 void ParticleFilter::prediction(double delta_t, double std_pos[], double velocity, double yaw_rate) {
@@ -53,7 +59,7 @@ void ParticleFilter::prediction(double delta_t, double std_pos[], double velocit
 	// NOTE: When adding noise you may find std::normal_distribution and std::default_random_engine useful.
 	//  http://en.cppreference.com/w/cpp/numeric/random/normal_distribution
 	//  http://www.cplusplus.com/reference/random/default_random_engine/
-	//default_random_engine gen;
+	default_random_engine gen;
 
 	// This line creates a normal (Gaussian) distribution for x
 	normal_distribution<double> dist_x_2(0, std_pos[0]);
@@ -72,7 +78,7 @@ void ParticleFilter::prediction(double delta_t, double std_pos[], double velocit
     	 else {
       		particles[i].x += velocity / yaw_rate * (sin(particles[i].theta + yaw_rate * delta_t) - sin(particles[i].theta));// + dist_x_2(gen);
       		particles[i].y += velocity / yaw_rate * (cos(particles[i].theta) - cos(particles[i].theta + yaw_rate * delta_t)) ;//+ dist_y_2(gen);
-      		particles[i].theta += yaw_rate * delta_t;
+      		//particles[i].theta += yaw_rate * delta_t + dist_theta_2(gen);
     	 }
 	 
 	 //smarter step : one time execution
@@ -81,7 +87,6 @@ void ParticleFilter::prediction(double delta_t, double std_pos[], double velocit
 	 particles[i].theta += dist_theta_2(gen);
 
   	}
-
 }
 
 
@@ -96,7 +101,7 @@ void ParticleFilter::dataAssociation(std::vector<LandmarkObs> predicted, std::ve
 	 LandmarkObs curr_obs = observations[i];
 	 double min_dist = numeric_limits<double>::max(); // very high distance for starters
 	 
-	 int map_id = -99;
+	 int map_id = -1;
 
  	 for (int j = 0; j < predicted.size(); j++){
 	  LandmarkObs pred_obs = predicted[j];
@@ -110,10 +115,7 @@ void ParticleFilter::dataAssociation(std::vector<LandmarkObs> predicted, std::ve
 	 }
 	 observations[i].id = map_id;  
 	}
-
-
 }
-
 
 void ParticleFilter::updateWeights(double sensor_range, double std_landmark[], 
 		const std::vector<LandmarkObs> &observations, const Map &map_landmarks) {
@@ -129,9 +131,9 @@ void ParticleFilter::updateWeights(double sensor_range, double std_landmark[],
 	//   http://planning.cs.uiuc.edu/node99.html
 
 	// the website does not work UIUC
-	// Referred code syntax from: 
+	// Referred code from: 
 	// https://github.com/jeremy-shannon/CarND-Kidnapped-Vehicle-Project/blob/master/src/particle_filter.cpp
-	
+
 	for (int i = 0; i < num_particles; i++){
 	 double par_x = particles[i].x;
 	 double par_y = particles[i].y;
@@ -189,40 +191,37 @@ void ParticleFilter::updateWeights(double sensor_range, double std_landmark[],
          particles[i].weight *= obs_w;
     }
   }
-}
+}	 
 
 void ParticleFilter::resample() {
 	// TODO: Resample particles with replacement with probability proportional to their weight. 
 	// NOTE: You may find std::discrete_distribution helpful here.
 	//   http://en.cppreference.com/w/cpp/numeric/random/discrete_distribution
-	// default_random_engine gen;
+	default_random_engine gen;
 	vector<Particle> tmp_particles; 
 	
 	// converting all weights into an array to symbolize circular wheel
 	vector<double> weight_wheel;
 
 	for (int i = 0; i < num_particles; i++){
-		weight_wheel.push_back(particles[i].weight);
+	 weight_wheel.push_back(particles[i].weight);
 	}
- 	
-	//mw = max(w)
-	double max_weight = *max_element(weight_wheel.begin(), weight_wheel.end());
 	
 	//index = int(random.random() * N)
-	uniform_int_distribution<int> uniint(0, num_particles - 1);
-	auto index = uniint(gen); //not double or int, because they both give a compilation error. No idea why?!
-	
+	uniform_int_distribution<int> unidist(0, num_particles - 1);
+	auto index = unidist(gen);
 	double beta = 0.0; 
 
-	uniform_real_distribution<double> unireal(0, max_weight);
+	//mw = max(w)
+	double max_weight = *max_element(weights.begin(), weights.end());
 
 	//for i in range(N): beta += random.random() * 2.0 * mw
     	//while beta > w[index]: beta -= w[index] index = (index + 1) % N p3.append(p[index])
 		
 	for (int i = 0; i < num_particles; i++){
-    	 beta += unireal(gen) * 2.0;
-    	 while (beta > weight_wheel[index]){
-      	  beta -= weight_wheel[index];
+    	 beta += unidist(gen) * 2.0;
+    	 while (beta > weights[index]){
+      	  beta -= weights[index];
       	  index = (index + 1) % num_particles;
     	 }
     	 tmp_particles.push_back(particles[index]);
@@ -230,7 +229,6 @@ void ParticleFilter::resample() {
   	
 	//p = p3
 	particles = tmp_particles;
-	
 }	
 
 
